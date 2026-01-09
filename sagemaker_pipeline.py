@@ -4,8 +4,6 @@ from sagemaker.inputs import TrainingInput
 from sagemaker.workflow.pipeline import Pipeline
 from sagemaker.workflow.steps import TrainingStep, ProcessingStep
 from sagemaker.sklearn.processing import ScriptProcessor
-from sagemaker.processing import ProcessingInput
-from sagemaker.workflow.functions import Join
 
 # -----------------------------
 # SageMaker session & role
@@ -40,11 +38,11 @@ train_step = TrainingStep(
 )
 
 # -----------------------------
-# 2️⃣ Register Model (MLflow)
+# 2️⃣ Register Model (MLflow) - direct S3 script
 # -----------------------------
 register_processor = ScriptProcessor(
     image_uri="683313688378.dkr.ecr.us-east-1.amazonaws.com/sagemaker-scikit-learn:1.2-1-cpu-py3",
-    command=["bash"],
+    command=["python3"],  # run Python script directly
     role=role,
     instance_type="ml.m5.large",
     instance_count=1,
@@ -53,30 +51,10 @@ register_processor = ScriptProcessor(
 register_step = ProcessingStep(
     name="RegisterModelWithMLflow",
     processor=register_processor,
-    code=None,  # override entrypoint with bash
-    inputs=[
-        ProcessingInput(
-            source="s3://mlops-creditcard-sagemaker/prod_codes/source_dir.tar.gz",
-            destination="/opt/ml/processing/code",
-        )
-    ],
+    code="s3://mlops-creditcard-sagemaker/prod_codes/register_model.py",  # direct S3 path
     job_arguments=[
-        "-c",
-        Join(
-            on="\n",
-            values=[
-                "set -e",
-                "cd /opt/ml/processing/code",
-                "pip install -r requirements.txt",
-                Join(
-                    on="",
-                    values=[
-                        "python register_model.py --MODEL_TAR_S3_URI ",
-                        train_step.properties.ModelArtifacts.S3ModelArtifacts,
-                    ],
-                ),
-            ],
-        ),
+        "--MODEL_TAR_S3_URI",
+        train_step.properties.ModelArtifacts.S3ModelArtifacts,
     ],
 )
 

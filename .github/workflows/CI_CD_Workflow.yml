@@ -11,7 +11,7 @@ jobs:
 
     steps:
       # -----------------------------
-      # 1. Checkout code
+      # 1. Checkout repository
       # -----------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -28,23 +28,34 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       # -----------------------------
-      # 3. Package source code from root
+      # 3. Package training code
       # -----------------------------
-      - name: Package production code
+      - name: Package training code
         run: |
-          tar -czvf source_dir.tar.gz *
+          # Only training code goes in tarball
+          tar -czvf source_dir.tar.gz train.py requirements.txt utils/
           ls -lh
 
       # -----------------------------
-      # 4. Upload to S3
+      # 4. Upload tarball to S3
       # -----------------------------
-      - name: Upload training package to S3
+      - name: Upload training tarball to S3
         run: |
           aws s3 cp source_dir.tar.gz \
             s3://mlops-creditcard-sagemaker/prod_codes/source_dir.tar.gz
 
       # -----------------------------
-      # 5. Trigger SageMaker Pipeline
+      # 5. Upload register_model.py and championselection.py to S3
+      # -----------------------------
+      - name: Upload MLflow and champion code to S3
+        run: |
+          aws s3 cp register_model.py \
+            s3://mlops-creditcard-sagemaker/prod_codes/register_model.py
+          aws s3 cp championselection.py \
+            s3://mlops-creditcard-sagemaker/prod_codes/championselection.py
+
+      # -----------------------------
+      # 6. Trigger SageMaker Pipeline
       # -----------------------------
       - name: Trigger SageMaker Pipeline
         run: |
