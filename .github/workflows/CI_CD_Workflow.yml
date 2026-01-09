@@ -11,13 +11,13 @@ jobs:
 
     steps:
       # -----------------------------
-      # 1. Checkout repository
+      # 1️⃣ Checkout repository
       # -----------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # -----------------------------
-      # 2. Configure AWS credentials
+      # 2️⃣ Configure AWS credentials
       # -----------------------------
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -28,34 +28,43 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       # -----------------------------
-      # 3. Package training code
+      # 3️⃣ Package training code (only train.py)
       # -----------------------------
       - name: Package training code
         run: |
-          # Only training code goes in tarball
           tar -czvf source_dir.tar.gz train.py
-          ls -lh
+          ls -lh source_dir.tar.gz
 
       # -----------------------------
-      # 4. Upload tarball to S3
+      # 4️⃣ Upload training tarball to S3
       # -----------------------------
-      - name: Upload training tarball to S3
+      - name: Upload training package
         run: |
-          aws s3 cp source_dir.tar.gz \
-            s3://mlops-creditcard-sagemaker/prod_codes/source_dir.tar.gz
+          aws s3 cp source_dir.tar.gz s3://mlops-creditcard-sagemaker/prod_codes/source_dir.tar.gz
 
       # -----------------------------
-      # 5. Upload register_model.py and championselection.py to S3
+      # 5️⃣ Upload register_model.py to S3
       # -----------------------------
-      - name: Upload MLflow and champion code to S3
+      - name: Upload register_model.py
         run: |
-          aws s3 cp register_model.py \
-            s3://mlops-creditcard-sagemaker/prod_codes/register_model.py
-          aws s3 cp championselection.py \
-            s3://mlops-creditcard-sagemaker/prod_codes/championselection.py
+          aws s3 cp register_model.py s3://mlops-creditcard-sagemaker/prod_codes/register_model.py
 
       # -----------------------------
-      # 6. Trigger SageMaker Pipeline
+      # 6️⃣ Upload championselection.py to S3
+      # -----------------------------
+      - name: Upload championselection.py
+        run: |
+          aws s3 cp championselection.py s3://mlops-creditcard-sagemaker/prod_codes/championselection.py
+
+      # -----------------------------
+      # 7️⃣ Upload requirements.txt to S3
+      # -----------------------------
+      - name: Upload requirements.txt
+        run: |
+          aws s3 cp requirements.txt s3://mlops-creditcard-sagemaker/prod_codes/requirements.txt
+
+      # -----------------------------
+      # 8️⃣ Trigger SageMaker Pipeline
       # -----------------------------
       - name: Trigger SageMaker Pipeline
         run: |
