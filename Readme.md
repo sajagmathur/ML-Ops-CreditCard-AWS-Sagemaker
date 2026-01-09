@@ -1,2 +1,1 @@
-Pipeline 1: 
-1. Training Job - Created on AWS Sagemaker Studio
+Same pipeline replicated on sagemaker studio.
