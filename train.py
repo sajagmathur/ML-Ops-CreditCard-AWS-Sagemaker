@@ -1,20 +1,13 @@
 """
-SageMaker-compatible training script with MLflow logging
-- Reads data from /opt/ml/input/data/train
-- Saves model + metrics to /opt/ml/model
-- Logs metrics & model to SageMaker Default MLflow
+SageMaker-compatible training script
+Reads data from S3-mounted path
+Writes model + metrics to S3 output path
 """
 
-# -----------------------------
-# Imports
-# -----------------------------
 import os
 import json
-import joblib
 import pandas as pd
-import mlflow
-import mlflow.sklearn
-
+import joblib
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
@@ -26,31 +19,9 @@ INPUT_DIR = "/opt/ml/input/data/train"
 OUTPUT_DIR = "/opt/ml/model"
 
 # -----------------------------
-# MLflow configuration
-# -----------------------------
-MLFLOW_EXPERIMENT_NAME = "creditcard-fraud-experiment"
-
-mlflow_tracking_uri = os.environ.get("MLFLOW_TRACKING_URI")
-if not mlflow_tracking_uri:
-    raise RuntimeError("❌ MLFLOW_TRACKING_URI not set")
-
-mlflow.set_tracking_uri(mlflow_tracking_uri)
-
-# Create or set experiment
-if not mlflow.get_experiment_by_name(MLFLOW_EXPERIMENT_NAME):
-    mlflow.create_experiment(MLFLOW_EXPERIMENT_NAME)
-
-mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
-
-print(f"✅ MLflow Tracking URI: {mlflow_tracking_uri}")
-print(f"✅ MLflow Experiment: {MLFLOW_EXPERIMENT_NAME}")
-
-# -----------------------------
 # Load data
 # -----------------------------
 data_path = os.path.join(INPUT_DIR, "Training.csv")
-print(f"📥 Loading data from {data_path}")
-
 data = pd.read_csv(data_path)
 
 X = data.drop("Class", axis=1)
@@ -61,52 +32,33 @@ x_train, x_test, y_train, y_test = train_test_split(
 )
 
 # -----------------------------
-# Train + Log with MLflow
+# Train model
 # -----------------------------
-with mlflow.start_run(run_name="creditcard_training") as run:
-    run_id = run.info.run_id
-    print(f"🚀 MLflow Run ID: {run_id}")
+model = RandomForestClassifier(random_state=42)
+model.fit(x_train, y_train)
 
-    # Train model
-    model = RandomForestClassifier(
-        n_estimators=100,
-        random_state=42,
-        n_jobs=-1
-    )
-    model.fit(x_train, y_train)
+# -----------------------------
+# Evaluate
+# -----------------------------
+y_pred = model.predict(x_test)
 
-    # Evaluate
-    y_pred = model.predict(x_test)
+metrics = {
+    "accuracy": accuracy_score(y_test, y_pred),
+    "precision": precision_score(y_test, y_pred),
+    "recall": recall_score(y_test, y_pred),
+    "f1_score": f1_score(y_test, y_pred)
+}
 
-    metrics = {
-        "accuracy": accuracy_score(y_test, y_pred),
-        "precision": precision_score(y_test, y_pred),
-        "recall": recall_score(y_test, y_pred),
-        "f1_score": f1_score(y_test, y_pred),
-    }
+print("📊 Metrics:", metrics)
 
-    print("📊 Metrics:", metrics)
+# -----------------------------
+# Save model artifacts
+# -----------------------------
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    # Log metrics to MLflow
-    for k, v in metrics.items():
-        mlflow.log_metric(k, float(v))
+joblib.dump(model, os.path.join(OUTPUT_DIR, "model.pkl"))
 
-    # Log model to MLflow (this creates model.pkl in MLflow artifacts)
-    mlflow.sklearn.log_model(
-        model,
-        artifact_path="model"
-    )
+with open(os.path.join(OUTPUT_DIR, "metrics.json"), "w") as f:
+    json.dump(metrics, f)
 
-    # -----------------------------
-    # Save SageMaker artifacts
-    # -----------------------------
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-    joblib.dump(model, os.path.join(OUTPUT_DIR, "model.pkl"))
-
-    with open(os.path.join(OUTPUT_DIR, "metrics.json"), "w") as f:
-        json.dump(metrics, f)
-
-    print("✅ Model & metrics saved to /opt/ml/model")
-
-print("🎉 Training + MLflow logging completed successfully")
+print("✅ Model and metrics saved")

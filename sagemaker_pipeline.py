@@ -4,6 +4,7 @@ from sagemaker.inputs import TrainingInput
 from sagemaker.workflow.pipeline import Pipeline
 from sagemaker.workflow.steps import TrainingStep, ProcessingStep
 from sagemaker.sklearn.processing import ScriptProcessor
+from sagemaker.processing import ProcessingInput
 
 # -----------------------------
 # SageMaker session & role
@@ -12,7 +13,7 @@ session = sagemaker.Session()
 role = "arn:aws:iam::075960506214:role/service-role/AmazonSageMaker-ExecutionRole-20251229T181530"
 
 # -----------------------------
-# 1️⃣ Training Estimator
+# 1️⃣ Training Estimator (NO MLflow here)
 # -----------------------------
 sklearn_estimator = SKLearn(
     entry_point="train.py",
@@ -26,9 +27,6 @@ sklearn_estimator = SKLearn(
     base_job_name="creditcard-training"
 )
 
-# -----------------------------
-# 1️⃣ Training Step
-# -----------------------------
 train_step = TrainingStep(
     name="TrainCreditCardModel",
     estimator=sklearn_estimator,
@@ -45,7 +43,7 @@ train_step = TrainingStep(
 # -----------------------------
 register_processor = ScriptProcessor(
     image_uri="683313688378.dkr.ecr.us-east-1.amazonaws.com/sagemaker-scikit-learn:1.2-1-cpu-py3",
-    command=["python3"],
+    command=["bash"],
     role=role,
     instance_type="ml.m5.large",
     instance_count=1,
@@ -54,47 +52,42 @@ register_processor = ScriptProcessor(
 register_step = ProcessingStep(
     name="RegisterModelWithMLflow",
     processor=register_processor,
-    code="register_model.py",
+    inputs=[
+        # source_dir mounted inside container
+        ProcessingInput(
+            source="s3://mlops-creditcard-sagemaker/prod_codes/source_dir.tar.gz",
+            destination="/opt/ml/processing/code"
+        )
+    ],
+    code=None,  # we override entrypoint manually
     job_arguments=[
-        # Path to model.tar.gz from training job
-        f"--MODEL_TAR_S3_URI={train_step.properties.ModelArtifacts.S3ModelArtifacts}"
-    ]
+        "-c",
+        """
+        set -e
+        cd /opt/ml/processing/code
+        pip install -r requirements.txt
+        python register_model.py \
+          --MODEL_TAR_S3_URI {}
+        """.format(train_step.properties.ModelArtifacts.S3ModelArtifacts)
+    ],
 )
 
 # -----------------------------
-# 3️⃣ Champion Selection
-# -----------------------------
-champion_processor = ScriptProcessor(
-    image_uri="683313688378.dkr.ecr.us-east-1.amazonaws.com/sagemaker-scikit-learn:1.2-1-cpu-py3",
-    command=["python3"],
-    role=role,
-    instance_type="ml.m5.large",
-    instance_count=1,
-)
-
-champion_step = ProcessingStep(
-    name="ChampionSelection",
-    processor=champion_processor,
-    code="championselection.py"
-)
-
-# -----------------------------
-# 4️⃣ Build Pipeline
+# 3️⃣ Build Pipeline
 # -----------------------------
 pipeline = Pipeline(
     name="CreditCardTrainingPipeline",
     steps=[
         train_step,
-        register_step,
-        champion_step
+        register_step
     ],
     sagemaker_session=session
 )
 
 # -----------------------------
-# 5️⃣ Create / Update Pipeline
+# 4️⃣ Create / Update Pipeline
 # -----------------------------
 pipeline.upsert(role_arn=role)
-
 execution = pipeline.start()
+
 print(f"✅ Pipeline started: {execution.arn}")
