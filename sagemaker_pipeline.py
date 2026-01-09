@@ -5,6 +5,7 @@ from sagemaker.workflow.pipeline import Pipeline
 from sagemaker.workflow.steps import TrainingStep, ProcessingStep
 from sagemaker.sklearn.processing import ScriptProcessor
 from sagemaker.processing import ProcessingInput
+from sagemaker.workflow.functions import Join
 
 # -----------------------------
 # SageMaker session & role
@@ -13,7 +14,7 @@ session = sagemaker.Session()
 role = "arn:aws:iam::075960506214:role/service-role/AmazonSageMaker-ExecutionRole-20251229T181530"
 
 # -----------------------------
-# 1️⃣ Training Estimator (NO MLflow here)
+# 1️⃣ Training Estimator
 # -----------------------------
 sklearn_estimator = SKLearn(
     entry_point="train.py",
@@ -24,7 +25,7 @@ sklearn_estimator = SKLearn(
     framework_version="1.2-1",
     py_version="py3",
     output_path="s3://mlops-creditcard-sagemaker/prod_outputs/trained_model/",
-    base_job_name="creditcard-training"
+    base_job_name="creditcard-training",
 )
 
 train_step = TrainingStep(
@@ -33,9 +34,9 @@ train_step = TrainingStep(
     inputs={
         "train": TrainingInput(
             s3_data="s3://mlops-creditcard-sagemaker/data/raw/",
-            content_type="text/csv"
+            content_type="text/csv",
         )
-    }
+    },
 )
 
 # -----------------------------
@@ -53,22 +54,25 @@ register_step = ProcessingStep(
     name="RegisterModelWithMLflow",
     processor=register_processor,
     inputs=[
-        # source_dir mounted inside container
         ProcessingInput(
             source="s3://mlops-creditcard-sagemaker/prod_codes/source_dir.tar.gz",
-            destination="/opt/ml/processing/code"
+            destination="/opt/ml/processing/code",
         )
     ],
-    code=None,  # we override entrypoint manually
+    code=None,
     job_arguments=[
         "-c",
-        """
-        set -e
-        cd /opt/ml/processing/code
-        pip install -r requirements.txt
-        python register_model.py \
-          --MODEL_TAR_S3_URI {}
-        """.format(train_step.properties.ModelArtifacts.S3ModelArtifacts)
+        Join(
+            on="",
+            values=[
+                "set -e\n"
+                "cd /opt/ml/processing/code\n"
+                "pip install -r requirements.txt\n"
+                "python register_model.py "
+                "--MODEL_TAR_S3_URI ",
+                train_step.properties.ModelArtifacts.S3ModelArtifacts,
+            ],
+        ),
     ],
 )
 
@@ -77,11 +81,8 @@ register_step = ProcessingStep(
 # -----------------------------
 pipeline = Pipeline(
     name="CreditCardTrainingPipeline",
-    steps=[
-        train_step,
-        register_step
-    ],
-    sagemaker_session=session
+    steps=[train_step, register_step],
+    sagemaker_session=session,
 )
 
 # -----------------------------
