@@ -53,7 +53,7 @@ register_processor = ScriptProcessor(
 register_step = ProcessingStep(
     name="RegisterModelWithMLflow",
     processor=register_processor,
-    code=None,  # we override entrypoint with bash
+    code=None,  # override entrypoint with bash
     inputs=[
         ProcessingInput(
             source="s3://mlops-creditcard-sagemaker/prod_codes/source_dir.tar.gz",
@@ -68,8 +68,13 @@ register_step = ProcessingStep(
                 "set -e",
                 "cd /opt/ml/processing/code",
                 "pip install -r requirements.txt",
-                "python register_model.py "
-                "--MODEL_TAR_S3_URI " + train_step.properties.ModelArtifacts.S3ModelArtifacts,
+                Join(
+                    on="",
+                    values=[
+                        "python register_model.py --MODEL_TAR_S3_URI ",
+                        train_step.properties.ModelArtifacts.S3ModelArtifacts,
+                    ],
+                ),
             ],
         ),
     ],
