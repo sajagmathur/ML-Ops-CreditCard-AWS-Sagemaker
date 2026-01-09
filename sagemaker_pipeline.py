@@ -46,6 +46,10 @@ register_processor = ScriptProcessor(
     role=role,
     instance_type="ml.m5.large",
     instance_count=1,
+    # Pass environment variable so register_model.py can install MLflow
+    env={
+        "MLFLOW_REQUIREMENTS_S3_URI": "s3://mlops-creditcard-sagemaker/prod_codes/requirements.txt"
+    }
 )
 
 register_step = ProcessingStep(
@@ -53,8 +57,7 @@ register_step = ProcessingStep(
     processor=register_processor,
     code="s3://mlops-creditcard-sagemaker/prod_codes/register_model.py",
     job_arguments=[
-        "--MODEL_TAR_S3_URI", train_step.properties.ModelArtifacts.S3ModelArtifacts,
-        "--MLFLOW_REQUIREMENTS_S3_URI", "s3://mlops-creditcard-sagemaker/prod_codes/requirements.txt"
+        "--MODEL_TAR_S3_URI", train_step.properties.ModelArtifacts.S3ModelArtifacts
     ]
 )
 

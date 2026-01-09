@@ -8,9 +8,34 @@ Registers SageMaker-trained model into MLflow (Default MLflow App)
 """
 
 import os
+import tempfile
+import subprocess
+
+# -----------------------------
+# Install dependencies from S3
+# -----------------------------
+requirements_s3_uri = os.environ.get("MLFLOW_REQUIREMENTS_S3_URI")
+if requirements_s3_uri:
+    tmp_dir = tempfile.mkdtemp()
+    local_req_path = os.path.join(tmp_dir, "requirements.txt")
+
+    if requirements_s3_uri.startswith("s3://"):
+        import boto3
+        bucket, key = requirements_s3_uri.replace("s3://", "").split("/", 1)
+        print(f"📦 Downloading requirements.txt from s3://{bucket}/{key}")
+        boto3.client("s3").download_file(bucket, key, local_req_path)
+    else:
+        local_req_path = requirements_s3_uri
+
+    print("📦 Installing Python dependencies...")
+    subprocess.check_call(["pip", "install", "--upgrade", "pip"])
+    subprocess.check_call(["pip", "install", "-r", local_req_path])
+
+# -----------------------------
+# Now import MLflow and others
+# -----------------------------
 import json
 import tarfile
-import tempfile
 import joblib
 import boto3
 import mlflow
