@@ -71,9 +71,15 @@ jobs:
           aws s3 cp requirements.txt s3://mlops-creditcard-sagemaker/prod_codes/requirements.txt
 
       # -----------------------------
-      # 9️⃣ Trigger SageMaker Pipeline
+      # 9️⃣ Trigger SageMaker Pipeline (latest version only)
       # -----------------------------
       - name: Trigger SageMaker Pipeline
         run: |
+          PIPELINE_NAME="CreditCardTrainingPipeline"
+          echo "📢 Fetching latest pipeline definition ARN..."
+          LATEST_ARN=$(aws sagemaker describe-pipeline --pipeline-name $PIPELINE_NAME --query 'PipelineArn' --output text)
+          echo "✅ Latest pipeline ARN: $LATEST_ARN"
+          
+          echo "🚀 Starting pipeline execution..."
           aws sagemaker start-pipeline-execution \
-            --pipeline-name CreditCardTrainingPipeline
+            --pipeline-name $PIPELINE_NAME
