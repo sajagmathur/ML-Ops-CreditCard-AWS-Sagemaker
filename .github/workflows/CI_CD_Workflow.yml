@@ -28,11 +28,10 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       # -----------------------------
-      # 3. Package source code
+      # 3. Package source code from root
       # -----------------------------
       - name: Package production code
         run: |
-          cd Production_Codes
           tar -czvf source_dir.tar.gz *
           ls -lh
 
@@ -41,7 +40,7 @@ jobs:
       # -----------------------------
       - name: Upload training package to S3
         run: |
-          aws s3 cp Production_Codes/source_dir.tar.gz \
+          aws s3 cp source_dir.tar.gz \
             s3://mlops-creditcard-sagemaker/prod_codes/source_dir.tar.gz
 
       # -----------------------------
