@@ -4,8 +4,6 @@ from sagemaker.inputs import TrainingInput
 from sagemaker.workflow.pipeline import Pipeline
 from sagemaker.workflow.steps import TrainingStep, ProcessingStep
 from sagemaker.sklearn.processing import ScriptProcessor
-from sagemaker.processing import ProcessingInput
-from sagemaker.workflow.functions import Join
 
 # -----------------------------
 # SageMaker session & role
@@ -44,7 +42,7 @@ train_step = TrainingStep(
 # -----------------------------
 register_processor = ScriptProcessor(
     image_uri="683313688378.dkr.ecr.us-east-1.amazonaws.com/sagemaker-scikit-learn:1.2-1-cpu-py3",
-    command=["bash"],
+    command=["python3"],
     role=role,
     instance_type="ml.m5.large",
     instance_count=1,
@@ -75,6 +73,7 @@ champion_step = ProcessingStep(
     name="ChampionSelection",
     processor=champion_processor,
     code="s3://mlops-creditcard-sagemaker/prod_codes/championselection.py",
+    depends_on=[register_step]  # ensures champion selection runs after registration
 )
 
 # -----------------------------
@@ -91,4 +90,5 @@ pipeline = Pipeline(
 # -----------------------------
 pipeline.upsert(role_arn=role)
 execution = pipeline.start()
+
 print(f"✅ Pipeline started: {execution.arn}")

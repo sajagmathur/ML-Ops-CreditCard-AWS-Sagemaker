@@ -51,21 +51,17 @@ def get_versions_by_tag(tag_key, tag_value):
             matched.append(mv)
     return matched
 
-
 def get_latest_challenger():
     challengers = get_versions_by_tag("role", "challenger")
     return max(challengers, key=lambda x: int(x.version)) if challengers else None
-
 
 def get_champion():
     champs = get_versions_by_tag("role", "champion")
     return champs[0] if champs else None
 
-
 def get_metrics(model_version):
     run = client.get_run(model_version.run_id)
     return run.data.metrics
-
 
 def challenger_wins(challenger_metrics, champion_metrics):
     wins = 0
@@ -86,7 +82,6 @@ def challenger_wins(challenger_metrics, champion_metrics):
     print(f"\n📈 Result: challenger won {wins}/{total} metrics")
     return total > 0 and wins > total / 2
 
-
 def find_latest_model_pkl_s3():
     paginator = s3.get_paginator("list_objects_v2")
     candidates = []
@@ -97,7 +92,6 @@ def find_latest_model_pkl_s3():
     if not candidates:
         raise FileNotFoundError("No model.pkl found in MLflow S3 artifacts")
     return max(candidates, key=lambda x: x["LastModified"])["Key"]
-
 
 def copy_model_to_champion_s3():
     latest_key = find_latest_model_pkl_s3()
@@ -110,24 +104,27 @@ def copy_model_to_champion_s3():
     )
     print("✅ Champion model updated")
 
-
 def create_inference_tar():
     tmp_dir = Path(tempfile.mkdtemp())
     try:
-        shutil.copy("inference.py", tmp_dir / "inference.py")
-        # Add __init__.py if needed
+        # Copy inference.py from S3
+        inference_s3_key = "prod_codes/inference.py"
+        s3.download_file(S3_BUCKET, inference_s3_key, str(tmp_dir / "inference.py"))
+        # Add __init__.py for module
         (tmp_dir / "__init__.py").touch()
 
+        # Copy champion model
         s3.download_file(S3_BUCKET, CHAMPION_MODEL_KEY, str(tmp_dir / "champion_model.pkl"))
 
+        # Create tar.gz
         tar_base = tmp_dir.parent / "inference_aws"
         shutil.make_archive(str(tar_base), "gztar", tmp_dir)
 
+        # Upload to S3
         s3.upload_file(f"{tar_base}.tar.gz", S3_BUCKET, INFERENCE_TAR_S3_KEY)
         print(f"📦 Uploaded inference package to s3://{S3_BUCKET}/{INFERENCE_TAR_S3_KEY}")
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
-
 
 def update_monitoring_training_data():
     print("📊 Updating monitoring reference training data")
@@ -141,7 +138,6 @@ def update_monitoring_training_data():
         Key=MONITORING_TRAINING_DATA_KEY,
     )
     print("✅ Monitoring training data updated")
-
 
 # -----------------------------
 # Main Logic
@@ -186,7 +182,6 @@ def main():
 
     print(f"\nDEBUG → promoted={promoted}")
     print("✅ Champion selection completed")
-
 
 # -----------------------------
 # Entry point

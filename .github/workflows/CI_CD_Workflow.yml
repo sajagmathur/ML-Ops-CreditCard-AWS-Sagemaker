@@ -57,14 +57,21 @@ jobs:
           aws s3 cp championselection.py s3://mlops-creditcard-sagemaker/prod_codes/championselection.py
 
       # -----------------------------
-      # 7️⃣ Upload requirements.txt to S3
+      # 7️⃣ Upload inference.py to S3
+      # -----------------------------
+      - name: Upload inference.py
+        run: |
+          aws s3 cp inference.py s3://mlops-creditcard-sagemaker/prod_codes/inference.py
+
+      # -----------------------------
+      # 8️⃣ Upload requirements.txt to S3
       # -----------------------------
       - name: Upload requirements.txt
         run: |
           aws s3 cp requirements.txt s3://mlops-creditcard-sagemaker/prod_codes/requirements.txt
 
       # -----------------------------
-      # 8️⃣ Trigger SageMaker Pipeline
+      # 9️⃣ Trigger SageMaker Pipeline
       # -----------------------------
       - name: Trigger SageMaker Pipeline
         run: |
