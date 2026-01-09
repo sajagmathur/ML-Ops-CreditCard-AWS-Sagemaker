@@ -4,8 +4,6 @@ from sagemaker.inputs import TrainingInput
 from sagemaker.workflow.pipeline import Pipeline
 from sagemaker.workflow.steps import TrainingStep, ProcessingStep
 from sagemaker.sklearn.processing import ScriptProcessor
-from sagemaker.processing import ProcessingInput
-from sagemaker.workflow.functions import Join
 
 # -----------------------------
 # SageMaker session & role
@@ -25,7 +23,7 @@ sklearn_estimator = SKLearn(
     framework_version="1.2-1",
     py_version="py3",
     output_path="s3://mlops-creditcard-sagemaker/prod_outputs/trained_model/",
-    base_job_name="creditcard-training",
+    base_job_name="creditcard-training"
 )
 
 train_step = TrainingStep(
@@ -34,9 +32,9 @@ train_step = TrainingStep(
     inputs={
         "train": TrainingInput(
             s3_data="s3://mlops-creditcard-sagemaker/data/raw/",
-            content_type="text/csv",
+            content_type="text/csv"
         )
-    },
+    }
 )
 
 # -----------------------------
@@ -53,26 +51,29 @@ register_processor = ScriptProcessor(
 register_step = ProcessingStep(
     name="RegisterModelWithMLflow",
     processor=register_processor,
-    inputs=[
-        ProcessingInput(
-            source="s3://mlops-creditcard-sagemaker/prod_codes/source_dir.tar.gz",
-            destination="/opt/ml/processing/code",
-        )
-    ],
-    code=None,
+    code=None,  # override entrypoint
     job_arguments=[
         "-c",
-        Join(
-            on="",
-            values=[
-                "set -e\n"
-                "cd /opt/ml/processing/code\n"
-                "pip install -r requirements.txt\n"
-                "python register_model.py "
-                "--MODEL_TAR_S3_URI ",
-                train_step.properties.ModelArtifacts.S3ModelArtifacts,
-            ],
-        ),
+        f"""
+        set -e
+        # download trained model artifact
+        aws s3 cp {train_step.properties.ModelArtifacts.S3ModelArtifacts} /tmp/model.tar.gz
+
+        # extract model & metrics
+        mkdir -p /opt/ml/processing/model
+        tar -xzf /tmp/model.tar.gz -C /opt/ml/processing/model
+
+        # move to code folder
+        cp -r /opt/ml/processing/model/* /opt/ml/processing/code/
+
+        cd /opt/ml/processing/code
+
+        # install requirements (including mlflow)
+        pip install -r requirements.txt
+
+        # register model with MLflow
+        python register_model.py --MODEL_TAR_S3_URI /opt/ml/processing/code
+        """
     ],
 )
 
@@ -82,7 +83,7 @@ register_step = ProcessingStep(
 pipeline = Pipeline(
     name="CreditCardTrainingPipeline",
     steps=[train_step, register_step],
-    sagemaker_session=session,
+    sagemaker_session=session
 )
 
 # -----------------------------
@@ -90,5 +91,4 @@ pipeline = Pipeline(
 # -----------------------------
 pipeline.upsert(role_arn=role)
 execution = pipeline.start()
-
 print(f"✅ Pipeline started: {execution.arn}")
