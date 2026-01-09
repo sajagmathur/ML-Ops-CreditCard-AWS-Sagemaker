@@ -7,10 +7,57 @@ Registers SageMaker-trained model into MLflow (Default MLflow App)
 - Registers model as challenger
 """
 
+# ============================================================
+# 🔴 MUST COME FIRST — before importing mlflow / sklearn etc.
+# ============================================================
 import argparse
 import os
+import sys
 import tempfile
 import subprocess
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--MLFLOW_REQUIREMENTS_S3_URI",
+    type=str,
+    required=False,
+    help="Optional S3 URI to requirements.txt",
+)
+parser.add_argument(
+    "--MODEL_TAR_S3_URI",
+    type=str,
+    required=True,
+    help="S3 URI of model.tar.gz from training step",
+)
+
+args, _ = parser.parse_known_args()
+
+if args.MLFLOW_REQUIREMENTS_S3_URI:
+    print("📦 Installing dependencies before imports...")
+
+    import boto3  # boto3 is available in SageMaker base images
+
+    tmp_req_dir = tempfile.mkdtemp()
+    local_req_path = os.path.join(tmp_req_dir, "requirements.txt")
+
+    if args.MLFLOW_REQUIREMENTS_S3_URI.startswith("s3://"):
+        bucket, key = args.MLFLOW_REQUIREMENTS_S3_URI.replace(
+            "s3://", ""
+        ).split("/", 1)
+        boto3.client("s3").download_file(bucket, key, local_req_path)
+    else:
+        local_req_path = args.MLFLOW_REQUIREMENTS_S3_URI
+
+    subprocess.check_call(
+        [sys.executable, "-m", "pip", "install", "--upgrade", "pip"]
+    )
+    subprocess.check_call(
+        [sys.executable, "-m", "pip", "install", "-r", local_req_path]
+    )
+
+# ============================================================
+# ✅ SAFE TO IMPORT THIRD-PARTY LIBS NOW
+# ============================================================
 import json
 import tarfile
 from datetime import datetime
@@ -22,51 +69,6 @@ import mlflow.sklearn
 from mlflow.tracking import MlflowClient
 
 # -----------------------------
-# Argument parsing (PIPELINE SAFE)
-# -----------------------------
-parser = argparse.ArgumentParser()
-
-parser.add_argument(
-    "--MODEL_TAR_S3_URI",
-    type=str,
-    required=True,
-    help="S3 URI of model.tar.gz from training step",
-)
-
-parser.add_argument(
-    "--MLFLOW_REQUIREMENTS_S3_URI",
-    type=str,
-    required=False,
-    help="Optional S3 URI to requirements.txt",
-)
-
-args = parser.parse_args()
-
-MODEL_TAR_S3_URI = args.MODEL_TAR_S3_URI
-MLFLOW_REQUIREMENTS_S3_URI = args.MLFLOW_REQUIREMENTS_S3_URI
-
-print("📌 MODEL_TAR_S3_URI:", MODEL_TAR_S3_URI)
-print("📌 MLFLOW_REQUIREMENTS_S3_URI:", MLFLOW_REQUIREMENTS_S3_URI)
-
-# -----------------------------
-# Install dependencies from S3 (optional)
-# -----------------------------
-if MLFLOW_REQUIREMENTS_S3_URI:
-    tmp_req_dir = tempfile.mkdtemp()
-    local_req_path = os.path.join(tmp_req_dir, "requirements.txt")
-
-    if MLFLOW_REQUIREMENTS_S3_URI.startswith("s3://"):
-        bucket, key = MLFLOW_REQUIREMENTS_S3_URI.replace("s3://", "").split("/", 1)
-        print(f"📦 Downloading requirements.txt from s3://{bucket}/{key}")
-        boto3.client("s3").download_file(bucket, key, local_req_path)
-    else:
-        local_req_path = MLFLOW_REQUIREMENTS_S3_URI
-
-    print("📦 Installing Python dependencies...")
-    subprocess.check_call(["pip", "install", "--upgrade", "pip"])
-    subprocess.check_call(["pip", "install", "-r", local_req_path])
-
-# -----------------------------
 # Configuration
 # -----------------------------
 S3_BUCKET = "mlops-creditcard-sagemaker"
@@ -74,12 +76,15 @@ S3_BUCKET = "mlops-creditcard-sagemaker"
 MLFLOW_EXPERIMENT_NAME = "creditcard-fraud-experiment"
 MLFLOW_MODEL_NAME = "creditcard-fraud-model"
 
+MODEL_TAR_S3_URI = args.MODEL_TAR_S3_URI
+
+print("📌 MODEL_TAR_S3_URI:", MODEL_TAR_S3_URI)
+print("📌 MLFLOW_REQUIREMENTS_S3_URI:", args.MLFLOW_REQUIREMENTS_S3_URI)
+
 # -----------------------------
-# MLflow setup
+# MLflow setup (SageMaker Default MLflow App)
 # -----------------------------
-mlflow.set_tracking_uri(
-    os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
-)
+mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
 mlflow.set_registry_uri(mlflow.get_tracking_uri())
 
 if not mlflow.get_experiment_by_name(MLFLOW_EXPERIMENT_NAME):
@@ -102,13 +107,12 @@ def parse_s3_uri(uri: str):
 # Download model.tar.gz
 # -----------------------------
 s3 = boto3.client("s3")
-
 bucket, key = parse_s3_uri(MODEL_TAR_S3_URI)
-print(f"📦 Downloading model artifact: s3://{bucket}/{key}")
 
 tmp_dir = tempfile.mkdtemp()
 local_tar_path = os.path.join(tmp_dir, "model.tar.gz")
 
+print(f"📦 Downloading model artifact: s3://{bucket}/{key}")
 s3.download_file(bucket, key, local_tar_path)
 
 # -----------------------------
@@ -127,7 +131,6 @@ if not os.path.exists(metrics_path):
     raise FileNotFoundError("❌ metrics.json not found in model.tar.gz")
 
 model = joblib.load(model_path)
-
 with open(metrics_path) as f:
     metrics = json.load(f)
 
@@ -161,17 +164,10 @@ result = client.register_model(
 )
 
 client.set_model_version_tag(
-    name=MLFLOW_MODEL_NAME,
-    version=result.version,
-    key="role",
-    value="challenger",
+    MLFLOW_MODEL_NAME, result.version, "role", "challenger"
 )
-
 client.set_model_version_tag(
-    name=MLFLOW_MODEL_NAME,
-    version=result.version,
-    key="status",
-    value="staging",
+    MLFLOW_MODEL_NAME, result.version, "status", "staging"
 )
 
 print("🏷️ Model registered in MLflow")

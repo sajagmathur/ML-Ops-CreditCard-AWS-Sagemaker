@@ -40,12 +40,18 @@ train_step = TrainingStep(
 # -----------------------------
 # 2️⃣ Register Model (MLflow)
 # -----------------------------
+mlflow_tracking_uri = "https://app-okuwxmjk...../.app.aws/mlflow"  # replace with your MLflow Studio App URI
+
 register_processor = ScriptProcessor(
     image_uri="683313688378.dkr.ecr.us-east-1.amazonaws.com/sagemaker-scikit-learn:1.2-1-cpu-py3",
     command=["python3"],
     role=role,
     instance_type="ml.m5.large",
     instance_count=1,
+    env={
+        "MLFLOW_TRACKING_URI": mlflow_tracking_uri,
+        "MLFLOW_REQUIREMENTS_S3_URI": "s3://mlops-creditcard-sagemaker/prod_codes/requirements.txt"
+    }
 )
 
 register_step = ProcessingStep(
@@ -55,8 +61,6 @@ register_step = ProcessingStep(
     job_arguments=[
         "--MODEL_TAR_S3_URI",
         train_step.properties.ModelArtifacts.S3ModelArtifacts,
-        "--MLFLOW_REQUIREMENTS_S3_URI",
-        "s3://mlops-creditcard-sagemaker/prod_codes/requirements.txt",
     ],
 )
 
@@ -75,7 +79,7 @@ champion_step = ProcessingStep(
     name="ChampionSelection",
     processor=champion_processor,
     code="s3://mlops-creditcard-sagemaker/prod_codes/championselection.py",
-    depends_on=[register_step],
+    depends_on=[register_step],  # ensures champion selection runs after registration
 )
 
 # -----------------------------
