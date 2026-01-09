@@ -21,7 +21,7 @@ parser.add_argument(
     "--MLFLOW_REQUIREMENTS_S3_URI",
     type=str,
     required=False,
-    help="Optional S3 URI to requirements.txt",
+    help="Optional S3 URI to requirements.txt (must include mlflow)",
 )
 parser.add_argument(
     "--MODEL_TAR_S3_URI",
@@ -32,6 +32,9 @@ parser.add_argument(
 
 args, _ = parser.parse_known_args()
 
+# -----------------------------
+# Install dependencies before imports
+# -----------------------------
 if args.MLFLOW_REQUIREMENTS_S3_URI:
     print("📦 Installing dependencies before imports...")
 
@@ -41,19 +44,13 @@ if args.MLFLOW_REQUIREMENTS_S3_URI:
     local_req_path = os.path.join(tmp_req_dir, "requirements.txt")
 
     if args.MLFLOW_REQUIREMENTS_S3_URI.startswith("s3://"):
-        bucket, key = args.MLFLOW_REQUIREMENTS_S3_URI.replace(
-            "s3://", ""
-        ).split("/", 1)
+        bucket, key = args.MLFLOW_REQUIREMENTS_S3_URI.replace("s3://", "").split("/", 1)
         boto3.client("s3").download_file(bucket, key, local_req_path)
     else:
         local_req_path = args.MLFLOW_REQUIREMENTS_S3_URI
 
-    subprocess.check_call(
-        [sys.executable, "-m", "pip", "install", "--upgrade", "pip"]
-    )
-    subprocess.check_call(
-        [sys.executable, "-m", "pip", "install", "-r", local_req_path]
-    )
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", local_req_path])
 
 # ============================================================
 # ✅ SAFE TO IMPORT THIRD-PARTY LIBS NOW
@@ -82,7 +79,7 @@ print("📌 MODEL_TAR_S3_URI:", MODEL_TAR_S3_URI)
 print("📌 MLFLOW_REQUIREMENTS_S3_URI:", args.MLFLOW_REQUIREMENTS_S3_URI)
 
 # -----------------------------
-# MLflow setup (SageMaker Default MLflow App)
+# MLflow setup
 # -----------------------------
 mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
 mlflow.set_registry_uri(mlflow.get_tracking_uri())
@@ -163,12 +160,8 @@ result = client.register_model(
     source=model_uri,
 )
 
-client.set_model_version_tag(
-    MLFLOW_MODEL_NAME, result.version, "role", "challenger"
-)
-client.set_model_version_tag(
-    MLFLOW_MODEL_NAME, result.version, "status", "staging"
-)
+client.set_model_version_tag(MLFLOW_MODEL_NAME, result.version, "role", "challenger")
+client.set_model_version_tag(MLFLOW_MODEL_NAME, result.version, "status", "staging")
 
 print("🏷️ Model registered in MLflow")
 print("Model Name:", MLFLOW_MODEL_NAME)
