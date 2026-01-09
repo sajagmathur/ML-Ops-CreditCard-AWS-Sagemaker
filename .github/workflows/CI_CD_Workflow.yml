@@ -33,7 +33,7 @@ jobs:
       - name: Package training code
         run: |
           # Only training code goes in tarball
-          tar -czvf source_dir.tar.gz train.py requirements.txt utils/
+          tar -czvf source_dir.tar.gz train.py
           ls -lh
 
       # -----------------------------
