@@ -4,6 +4,8 @@ from sagemaker.inputs import TrainingInput
 from sagemaker.workflow.pipeline import Pipeline
 from sagemaker.workflow.steps import TrainingStep, ProcessingStep
 from sagemaker.sklearn.processing import ScriptProcessor
+from sagemaker.processing import ProcessingInput
+from sagemaker.workflow.functions import Join
 
 # -----------------------------
 # SageMaker session & role
@@ -38,11 +40,11 @@ train_step = TrainingStep(
 )
 
 # -----------------------------
-# 2️⃣ Register Model (MLflow) - direct S3 script
+# 2️⃣ Register Model (MLflow)
 # -----------------------------
 register_processor = ScriptProcessor(
     image_uri="683313688378.dkr.ecr.us-east-1.amazonaws.com/sagemaker-scikit-learn:1.2-1-cpu-py3",
-    command=["python3"],  # run Python script directly
+    command=["bash"],
     role=role,
     instance_type="ml.m5.large",
     instance_count=1,
@@ -51,26 +53,42 @@ register_processor = ScriptProcessor(
 register_step = ProcessingStep(
     name="RegisterModelWithMLflow",
     processor=register_processor,
-    code="s3://mlops-creditcard-sagemaker/prod_codes/register_model.py",  # direct S3 path
+    code="s3://mlops-creditcard-sagemaker/prod_codes/register_model.py",
     job_arguments=[
-        "--MODEL_TAR_S3_URI",
-        train_step.properties.ModelArtifacts.S3ModelArtifacts,
-    ],
+        "--MODEL_TAR_S3_URI", train_step.properties.ModelArtifacts.S3ModelArtifacts,
+        "--MLFLOW_REQUIREMENTS_S3_URI", "s3://mlops-creditcard-sagemaker/prod_codes/requirements.txt"
+    ]
 )
 
 # -----------------------------
-# 3️⃣ Build Pipeline
+# 3️⃣ Champion Selection
+# -----------------------------
+champion_processor = ScriptProcessor(
+    image_uri="683313688378.dkr.ecr.us-east-1.amazonaws.com/sagemaker-scikit-learn:1.2-1-cpu-py3",
+    command=["python3"],
+    role=role,
+    instance_type="ml.m5.large",
+    instance_count=1,
+)
+
+champion_step = ProcessingStep(
+    name="ChampionSelection",
+    processor=champion_processor,
+    code="s3://mlops-creditcard-sagemaker/prod_codes/championselection.py",
+)
+
+# -----------------------------
+# 4️⃣ Build Pipeline
 # -----------------------------
 pipeline = Pipeline(
     name="CreditCardTrainingPipeline",
-    steps=[train_step, register_step],
+    steps=[train_step, register_step, champion_step],
     sagemaker_session=session,
 )
 
 # -----------------------------
-# 4️⃣ Create / Update Pipeline
+# 5️⃣ Create / Update Pipeline
 # -----------------------------
 pipeline.upsert(role_arn=role)
 execution = pipeline.start()
-
 print(f"✅ Pipeline started: {execution.arn}")
